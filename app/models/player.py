@@ -1,5 +1,5 @@
 """Player-related Pydantic models"""
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, EmailStr
 from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
@@ -8,7 +8,7 @@ from uuid import UUID
 class PlayerCreateRequest(BaseModel):
     """Request to create/register a new player"""
     player_name: str
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
 
     @field_validator("player_name")
     @classmethod
@@ -66,7 +66,7 @@ class CallActionRequest(BaseModel):
 
 class RaiseActionRequest(BaseModel):
     player_id: str
-    raise_to_amount: int
+    raise_to_amount: int = Field(gt=0, description="Amount must be positive")
 
 class AllInActionRequest(BaseModel):
     player_id: str
@@ -82,13 +82,15 @@ class ActionResponse(BaseModel):
     pot: Optional[int] = None
     highest_bet_updated: Optional[int] = None
     next_turn: Optional[str] = None
+    stage: Optional[str] = None  # Current game stage after action
+    community_cards: Optional[List[str]] = None  # If stage advanced
 
 class GameStateResponse(BaseModel):
     game_id: str
     stage: str  # "preflop", "flop", "turn", "river"
     pot: int
     dealer_position: int
-    current_turn: str  # player_id of current player
+    current_turn: Optional[str] = None  # player_id of current player
     highest_bet_in_round: int
 
     players: List[PlayerStateResponse]
@@ -110,3 +112,4 @@ class ShowdownResponse(BaseModel):
     showdown_results: List[ShowdownResult]
     winner_id: str
     pot_awarded: int
+    completion_reason: str  # "showdown" (multiple players) or "all_folded" (one player)

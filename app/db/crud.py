@@ -17,6 +17,11 @@ def get_player_by_name(db: Session, player_name: str) -> Player:
     return db.query(Player).filter(Player.player_name == player_name).first()
 
 
+def get_player_by_email(db: Session, email: str) -> Player:
+    """Get a player by email"""
+    return db.query(Player).filter(Player.email == email).first()
+
+
 def get_all_players(db: Session) -> list[Player]:
     """Get all players"""
     return db.query(Player).all()

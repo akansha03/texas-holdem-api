@@ -21,7 +21,7 @@ class Player(Base):
 
     player_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     player_name = Column(String, index=True, nullable=False)
-    email = Column(String, nullable=True)
+    email = Column(String, nullable=True, unique=True, index=True)
     total_chips = Column(Float, default=1000)
     total_games = Column(Integer, default=0)
     total_wins = Column(Integer, default=0)

@@ -50,7 +50,7 @@ class Player:
         Returns:
             True if successful, False if insufficient chips
         """
-        if amount > self.stacks:
+        if amount < 0 or amount > self.stacks:
             return False
 
         self.stacks -= amount

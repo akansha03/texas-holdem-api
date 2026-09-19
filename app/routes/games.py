@@ -8,7 +8,7 @@ Routes:
 - GET /api/games/{game_id}/history - Get game history
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Path
 from sqlalchemy.orm import Session
 from app.models.game import (
     GameCreateRequest,
@@ -27,11 +27,11 @@ from app.db import crud
 router = APIRouter()
 
 
-@router.post("", response_model=GameCreateResponse)
+@router.post("", response_model=GameCreateResponse, status_code=201)
 async def create_game(request: GameCreateRequest, db: Session = Depends(get_db)):
     """Create a new poker game session"""
     # Validate blinds
-    if request.small_blind <= 0 or request.big_blind <= 0:
+    if request.small_blind < 0 or request.big_blind < 0:
         raise HTTPException(
             status_code=400,
             detail="Blinds must be positive values"
@@ -83,7 +83,7 @@ async def create_game(request: GameCreateRequest, db: Session = Depends(get_db))
 
 
 @router.get("/{game_id}", response_model=GameDetailsResponse)
-async def get_game_details(game_id: str, db: Session = Depends(get_db)):
+async def get_game_details(game_id: str = Path(...), db: Session = Depends(get_db)):
     """Get game metadata and player list"""
     # Get from in-memory first (if active game)
     game_session = game_manager.get_game(game_id)
@@ -123,7 +123,7 @@ async def get_game_details(game_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{game_id}/join", response_model=GameJoinResponse)
-async def join_game(game_id: str, request: GameJoinRequest, db: Session = Depends(get_db)):
+async def join_game(request: GameJoinRequest, game_id: str = Path(...), db: Session = Depends(get_db)):
     """Player joins an existing game"""
     # Get game from memory first
     game_session = game_manager.get_game(game_id)
@@ -137,7 +137,7 @@ async def join_game(game_id: str, request: GameJoinRequest, db: Session = Depend
             raise HTTPException(
                 status_code=409,
                 detail="Game has already started or is completed"
-            )
+        )
 
         # Load game back into memory (for active play)
         game_session = game_manager.create_game(
@@ -153,11 +153,17 @@ async def join_game(game_id: str, request: GameJoinRequest, db: Session = Depend
             status_code=409,
             detail="Game has already started or is completed"
         )
-
-    if not game_manager.join_game(game_id, request.player_id, request.player_name):
+    db_player = crud.get_player(db, request.player_id)
+    if not db_player:
+        raise HTTPException(
+            status_code=404,
+            detail="Player not found"
+        )
+    player_name = db_player.player_name
+    if not game_manager.join_game(game_id, request.player_id, player_name):
         raise HTTPException(
             status_code=409,
-            detail="Could not join game (full or invalid)"
+            detail="Could not join game (full ot already joined)"
         )
 
     # Add player to database
@@ -187,15 +193,15 @@ async def join_game(game_id: str, request: GameJoinRequest, db: Session = Depend
     return GameJoinResponse(
         game_id=game_session.game_id,
         player_id=request.player_id,
-        player_name=request.player_name,
+        player_name=player_name,
         position=player.position,
-        status="joined",
+        status=game_session.status,
         message=message
     )
 
 
 @router.get("/{game_id}/history", response_model=GameHistoryResponse)
-async def get_game_history(game_id: str, db: Session = Depends(get_db)):
+async def get_game_history(game_id: str = Path(...), db: Session = Depends(get_db)):
     """Get game history (all hands played)"""
     # Check memory first
     game_session = game_manager.get_game(game_id)
@@ -220,7 +226,7 @@ async def get_game_history(game_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{game_id}/start-hand", response_model=StartHandResponse)
-async def start_hand(game_id: str, db: Session = Depends(get_db)):
+async def start_hand(game_id: str = Path(...), db: Session = Depends(get_db)):
     """
     Start a new hand - deal hole cards and post blinds
 
@@ -280,7 +286,6 @@ async def start_hand(game_id: str, db: Session = Depends(get_db)):
             )
             for p in game_session.game.players
         ]
-
         return StartHandResponse(
             success=True,
             game_id=game_id,
@@ -294,6 +299,5 @@ async def start_hand(game_id: str, db: Session = Depends(get_db)):
             message=f"Hand #{game_session.game.hand_number} started! Blinds posted. Waiting for first action.",
             players_state=players_state
         )
-
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

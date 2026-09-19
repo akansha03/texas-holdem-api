@@ -4,6 +4,7 @@ from datetime import datetime
 import uuid
 from app.core.game_logic.game import PokerGame
 from app.core.game_logic.player import Player
+from app.db import crud
 
 class GameSession:
     """Represents a single poker game session"""
@@ -41,7 +42,7 @@ class GameSession:
         """Add player to game session"""
         if len(self.players) >= self.max_players:
             return False
-
+        
         # Create Player service instance
         player = Player(
             player_id=player_id,
@@ -71,7 +72,6 @@ class GameSession:
     def get_players_state(self) -> list:
         """Get all players' state as dicts for API response"""
         return [player.to_dict() for player in self.players.values()]
-
 
 class GameManager:
     """Manages all active game sessions"""
@@ -119,6 +119,9 @@ class GameManager:
             del self.games[game_id]
             return True
         return False
+
+    def delete_all_games(self):
+        self.games.clear()
 
     def get_all_games(self) -> list:
         """Get all active games"""

@@ -57,3 +57,5 @@ logs/
 *.tmp
 .temp/
 temp/
+docs/
+alembic/__pycache__/

@@ -31,9 +31,9 @@ class PokerGame:
                 f"Big blind ({big_blind}) must be greater than small blind ({small_blind}). "
                 f"Typical ratio is 1:2"
             )
-        if max_players < 2:
-            raise ValueError("Game must have at least 2 players")
-
+        if max_players < 2 or max_players>10:
+            raise ValueError("Max Players must be between 2 and 10")
+        
         self.small_blind = small_blind
         self.big_blind = big_blind
         self.max_players = max_players
@@ -51,6 +51,7 @@ class PokerGame:
         self.hand_number = 0
         self.betting_round_active = False
         self.highest_bet_in_round = 0
+        self.players_acted_this_round: set = set()  # Track who has acted
 
     def add_player(self, player: Player) -> bool:
         """Add player to game"""
@@ -76,10 +77,11 @@ class PokerGame:
         self.current_player_index = 0
         self.highest_bet_in_round = 0
         self.betting_round_active = True
+        self.players_acted_this_round = set()
 
         # Reset player state
         for player in self.players:
-            if player.get_stacks() > 0:  # Only active players
+            if player.get_stacks() > 0: 
                 player.reset_for_new_hand()
 
         # Create and shuffle deck
@@ -115,7 +117,7 @@ class PokerGame:
 
         self.highest_bet_in_round = bb_amount
 
-        # First to act is after big blind
+        # First to act is after big blind (UTG in preflop)
         self.current_player_index = (bb_position + 1) % len(self.players)
 
     def get_current_player(self) -> Optional[Player]:
@@ -123,6 +125,34 @@ class PokerGame:
         if not self.players or self.current_player_index >= len(self.players):
             return None
         return self.players[self.current_player_index]
+
+    def is_betting_round_complete(self) -> bool:
+        """
+        Check if the current betting round is complete.
+
+        Betting round ends when:
+        1. Only 1 active player left (rest folded)
+        2. All active players have acted AND all have same bet (or all-in)
+
+        Returns: True if betting round should end, False otherwise
+        """
+        active_players = self.get_active_players()
+
+        # If only 1 player left, hand is over
+        if len(active_players) <= 1:
+            return True
+
+        # Check if all active players have acted at least once
+        for player in active_players:
+            if player.player_id not in self.players_acted_this_round:
+                return False
+
+        # Check if all active players have matched the highest bet (or are all-in)
+        for player in active_players:
+            if player.current_bet < self.highest_bet_in_round and player.get_stacks() > 0:
+                return False
+
+        return True
 
     def advance_to_next_player(self):
         """Move to next player who can act"""
@@ -152,6 +182,15 @@ class PokerGame:
             return False
 
         player.fold()
+
+        # Check if only one player remains (everyone else folded)
+        active = self.get_active_players()
+        if len(active) == 1:
+            # Hand ends immediately - remaining player wins
+            self.stage = "showdown"
+            self.betting_round_active = False
+            return True
+
         self.advance_to_next_player()
         return True
 
@@ -164,6 +203,19 @@ class PokerGame:
         # Can only check if no one has bet
         if player.current_bet < self.highest_bet_in_round:
             return False
+
+        # Track that this player has acted
+        self.players_acted_this_round.add(player_id)
+
+        # Check if betting round is complete
+        if self.is_betting_round_complete():
+            self.betting_round_active = False
+            # Auto-advance to next stage if not at showdown
+            if self.stage != "river":
+                self.advance_stage()
+            elif self.stage == "river":
+                self.stage = "showdown"
+            return True
 
         self.advance_to_next_player()
         return True
@@ -182,6 +234,20 @@ class PokerGame:
             return False  # Insufficient chips
 
         self.pot += amount_needed
+
+        # Track that this player has acted
+        self.players_acted_this_round.add(player_id)
+
+        # Check if betting round is complete
+        if self.is_betting_round_complete():
+            self.betting_round_active = False
+            # Auto-advance to next stage if not at showdown
+            if self.stage != "river":
+                self.advance_stage()
+            elif self.stage == "river":
+                self.stage = "showdown"
+            return True
+
         self.advance_to_next_player()
         return True
 
@@ -203,6 +269,11 @@ class PokerGame:
 
         self.pot += amount_needed
         self.highest_bet_in_round = raise_to
+
+        # Track that this player has acted (but clear others since they need to respond)
+        self.players_acted_this_round.clear()
+        self.players_acted_this_round.add(player_id)
+
         self.advance_to_next_player()
         return True
 
@@ -218,6 +289,21 @@ class PokerGame:
         # If this is more than current bet, it's a raise
         if player.current_bet > self.highest_bet_in_round:
             self.highest_bet_in_round = player.current_bet
+            # Clear others since they need to respond to the raise
+            self.players_acted_this_round.clear()
+
+        # Track that this player has acted
+        self.players_acted_this_round.add(player_id)
+
+        # Check if betting round is complete
+        if self.is_betting_round_complete():
+            self.betting_round_active = False
+            # Auto-advance to next stage if not at showdown
+            if self.stage != "river":
+                self.advance_stage()
+            elif self.stage == "river":
+                self.stage = "showdown"
+            return True
 
         self.advance_to_next_player()
         return True
@@ -239,6 +325,7 @@ class PokerGame:
 
         # Reset for new betting round
         self.highest_bet_in_round = 0
+        self.players_acted_this_round = set()
         for player in self.players:
             if not player.has_folded:
                 player.reset_current_bet()
@@ -280,6 +367,30 @@ class PokerGame:
                     winners.append(player)
 
         return (winners, best_hand[0] if best_hand else -1)
+
+    def distribute_pot(self) -> bool:
+        """
+        Distribute pot to winner(s).
+        Returns True if distribution was successful.
+        """
+        winners, _ = self.determine_winner()
+        if not winners:
+            return False
+
+        # Split pot equally among winners
+        chips_per_winner = self.pot // len(winners)
+        remainder = self.pot % len(winners)
+
+        for i, winner in enumerate(winners):
+            chips_to_award = chips_per_winner
+            # Give remainder chips to first winner(s)
+            if i < remainder:
+                chips_to_award += 1
+            winner.add_chips(chips_to_award)
+
+        # Reset pot
+        self.pot = 0
+        return True
 
     def get_game_state(self) -> dict:
         """Get current game state for API"""

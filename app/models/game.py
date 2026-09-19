@@ -12,6 +12,17 @@ class GameCreateRequest(BaseModel):
     max_players: int = 2
     starting_chips: int = 1000
 
+    @field_validator("game_name")
+    @classmethod
+    def validate_game_name(cls, v):
+        if not v or not isinstance(v, str):
+            raise ValueError("Game name is required and must be string")
+        if len(v) < 1:
+            raise ValueError("Game name cannot be empty")
+        if len(v) > 100:
+            raise ValueError("Game name cannot exceed 100 characters")
+        return v.strip()
+    '''
     @field_validator("small_blind", "big_blind")
     @classmethod
     def validate_blinds_positive(cls, v):
@@ -19,7 +30,7 @@ class GameCreateRequest(BaseModel):
         if v <= 0:
             raise ValueError("Blinds must be greater than 0")
         return v
-
+    
     @field_validator("big_blind")
     @classmethod
     def validate_big_blind_vs_small(cls, v, info):
@@ -32,7 +43,7 @@ class GameCreateRequest(BaseModel):
                     f"Typical ratio is 1:2 (e.g., small_blind=5, big_blind=10)"
                 )
         return v
-
+    '''
     @field_validator("max_players")
     @classmethod
     def validate_max_players(cls, v):
@@ -55,7 +66,6 @@ class GameCreateRequest(BaseModel):
 
 class GameJoinRequest(BaseModel):
     player_id: str
-    player_name: str
 
 # Responses
 class GameMetadata(BaseModel):

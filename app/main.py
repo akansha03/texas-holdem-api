@@ -1,18 +1,17 @@
 """Main FastAPI application entry point"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import settings
-from app.db import init_db
 import logging
+from app.db.session import reset_db_on_startup
 
 logger = logging.getLogger(__name__)
 
-# Initialize database
+# Initialize database (drop and recreate if RESET_DB_ON_STARTUP=true)
 try:
-    init_db()
-    logger.info("✅ Database tables initialized successfully")
+    #reset_db_on_startup()
+    logger.info("✅ Database initialized successfully")
 except Exception as e:
-    logger.warning(f"⚠️ Database initialization failed: {e}")
+    logger.error(f"❌ Database initialization failed: {e}")
     logger.warning("⚠️ Server starting without database. Please ensure PostgreSQL is running.")
 
 # Create FastAPI app
