@@ -120,6 +120,9 @@ async def get_showdown_results(game_id: str = Path(...)):
     if not winners:
         raise HTTPException(status_code=400, detail="Could not determine winner")
 
+    # Save pot amount before distribution (distribute_pot resets it to 0)
+    pot_awarded = game_session.game.pot
+
     # Award pot to winner(s)
     game_session.game.distribute_pot()
 
@@ -130,16 +133,29 @@ async def get_showdown_results(game_id: str = Path(...)):
     # Build showdown results for all players
     showdown_results = []
     for player in game_session.game.players:
-        all_cards = player.hole_cards + game_session.game.community_cards
-        hand_eval = game_session.game.hand_evaluator.evaluate_hand(all_cards)
-        hand_rank, hand_kickers = hand_eval
-
         from app.models.player import ShowdownResult
+
+        # Only evaluate hand if we have community cards (showdown) or if this player won by fold
+        if len(game_session.game.community_cards) >= 5 or player.player_id == winners[0].player_id:
+            all_cards = player.hole_cards + game_session.game.community_cards
+            if len(all_cards) >= 5:
+                hand_eval = game_session.game.hand_evaluator.evaluate_hand(all_cards)
+                hand_rank, hand_kickers = hand_eval
+                best_hand = game_session.game.hand_evaluator.get_hand_name(hand_rank)
+            else:
+                hand_rank = -1
+                hand_kickers = []
+                best_hand = "Folded"
+        else:
+            hand_rank = -1
+            hand_kickers = []
+            best_hand = "Folded"
+
         result = ShowdownResult(
             player_id=player.player_id,
             name=player.player_name,
             hole_cards=[str(c) for c in player.hole_cards],
-            best_hand=game_session.game.hand_evaluator.get_hand_name(hand_rank),
+            best_hand=best_hand,
             hand_rank=hand_rank,
             hand_score=(hand_rank, hand_kickers),
             final_stacks=player.get_stacks()
@@ -147,7 +163,6 @@ async def get_showdown_results(game_id: str = Path(...)):
         showdown_results.append(result)
 
     winner_id = winners[0].player_id if winners else None
-    pot_awarded = game_session.game.pot
 
     return ShowdownResponse(
         game_status="completed",
@@ -156,7 +171,6 @@ async def get_showdown_results(game_id: str = Path(...)):
         pot_awarded=pot_awarded,
         completion_reason=completion_reason
     )
-
 
 @router.post("/advance-stage")
 async def advance_stage(game_id: str = Path(...), admin_token: str = Query(...)):

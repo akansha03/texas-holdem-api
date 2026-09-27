@@ -205,16 +205,18 @@ def test_join_a_game_with_more_than_max_players(client, game, player_1, player_2
     assert response.json()['detail'] == 'Game has already started or is completed'
 
 def test_duplicate_player_join_attempt(client, game, player_1):
-    """Same player can rejoin game (updates their status in the game)"""
+    """Same player cannot join the same game twice"""
     response1 = client.post(f"/api/games/{game['game_id']}/join", json={
         "player_id": player_1['player_id']
     })
     assert response1.status_code == HTTPStatus.OK
 
+    # Attempt to join again - should be rejected
     response2 = client.post(f"/api/games/{game['game_id']}/join", json={
         "player_id": player_1['player_id']
     })
-    assert response2.status_code == HTTPStatus.OK
+    assert response2.status_code == HTTPStatus.CONFLICT
+    assert "already joined" in response2.json()['detail']
 
 # ===== START HAND AND GAME FLOW TESTS =====
 

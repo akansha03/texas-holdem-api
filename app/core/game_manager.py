@@ -39,10 +39,14 @@ class GameSession:
         )
 
     def add_player(self, player_id: str, player_name: str) -> bool:
-        """Add player to game session"""
+        """Add player to game session - prevent duplicates"""
         if len(self.players) >= self.max_players:
             return False
-        
+
+        # Check if player is already in game
+        if player_id in self.players:
+            return False
+
         # Create Player service instance
         player = Player(
             player_id=player_id,

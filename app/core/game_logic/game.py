@@ -54,8 +54,11 @@ class PokerGame:
         self.players_acted_this_round: set = set()  # Track who has acted
 
     def add_player(self, player: Player) -> bool:
-        """Add player to game"""
+        """Add player to game - prevent duplicates"""
         if len(self.players) >= self.max_players:
+            return False
+        # Check if player is already in game
+        if self.get_player(player.player_id):
             return False
         player.position = len(self.players)
         self.players.append(player)
@@ -326,6 +329,7 @@ class PokerGame:
         # Reset for new betting round
         self.highest_bet_in_round = 0
         self.players_acted_this_round = set()
+        self.current_player_index = self.dealer_position
         for player in self.players:
             if not player.has_folded:
                 player.reset_current_bet()

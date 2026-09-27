@@ -9,6 +9,7 @@ Routes:
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Path
+from http import HTTPStatus
 from sqlalchemy.orm import Session
 from app.models.game import (
     GameCreateRequest,
@@ -25,7 +26,6 @@ from app.db import get_db
 from app.db import crud
 
 router = APIRouter()
-
 
 @router.post("", response_model=GameCreateResponse, status_code=201)
 async def create_game(request: GameCreateRequest, db: Session = Depends(get_db)):
@@ -122,7 +122,7 @@ async def get_game_details(game_id: str = Path(...), db: Session = Depends(get_d
     )
 
 
-@router.post("/{game_id}/join", response_model=GameJoinResponse)
+@router.post("/{game_id}/join", response_model=GameJoinResponse, status_code=HTTPStatus.OK)
 async def join_game(request: GameJoinRequest, game_id: str = Path(...), db: Session = Depends(get_db)):
     """Player joins an existing game"""
     # Get game from memory first
@@ -161,9 +161,21 @@ async def join_game(request: GameJoinRequest, game_id: str = Path(...), db: Sess
         )
     player_name = db_player.player_name
     if not game_manager.join_game(game_id, request.player_id, player_name):
+        # Check why join failed
+        game = game_manager.get_game(game_id)
+        if game and len(game.players) >= game.max_players:
+            raise HTTPException(
+                status_code=409,
+                detail="Game is full"
+            )
+        if game and game.get_player(request.player_id):
+            raise HTTPException(
+                status_code=409,
+                detail="Player already joined this game"
+            )
         raise HTTPException(
             status_code=409,
-            detail="Could not join game (full ot already joined)"
+            detail="Could not join game"
         )
 
     # Add player to database
@@ -224,8 +236,7 @@ async def get_game_history(game_id: str = Path(...), db: Session = Depends(get_d
         hands=[]
     )
 
-
-@router.post("/{game_id}/start-hand", response_model=StartHandResponse)
+@router.post("/{game_id}/start-hand", response_model=StartHandResponse, status_code=HTTPStatus.OK)
 async def start_hand(game_id: str = Path(...), db: Session = Depends(get_db)):
     """
     Start a new hand - deal hole cards and post blinds
